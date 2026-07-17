@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>แท็กติกบอร์ด | จัดผู้เล่นและวางแผนทีมฟุตบอล</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Kanit:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --bg:#0a0a0c;
+    --bg2:#111214;
+    --panel:#17181b;
+    --panel2:#1e2023;
+    --line:rgba(255,255,255,.08);
+    --line-strong:rgba(255,255,255,.16);
+    --red:#c8102e;
+    --red-dark:#8a0b20;
+    --gold:#d4af37;
+    --gold-soft:#f0d675;
+    --pitch:#1e5b3f;
+    --pitch-dark:#194f37;
+    --text:#f3f1ea;
+    --text-mute:#9b9ba0;
+    --text-mute2:#6c6c72;
+    --shadow:0 8px 30px rgba(0,0,0,.45);
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(200,16,46,.10), transparent 60%),
+      radial-gradient(1000px 500px at 110% 10%, rgba(212,175,55,.07), transparent 60%),
+      var(--bg);
+    color:var(--text);
+    font-family:'Kanit',sans-serif;
+    min-height:100vh;
+    -webkit-tap-highlight-color:transparent;
+  }
+  ::selection{background:var(--red);color:#fff;}
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-thumb{background:#333;border-radius:8px;}
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    position:sticky;top:0;z-index:40;
+    display:flex;align-items:center;gap:12px;
+    padding:14px 18px;
+    background:linear-gradient(180deg, rgba(10,10,12,.97), rgba(10,10,12,.88));
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .crest{
+    width:38px;height:38px;border-radius:50%;
+    background:conic-gradient(from 220deg, var(--red), var(--red-dark) 40%, #000 70%, var(--gold) 100%);
+    display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:14px;color:var(--gold-soft);
+    border:2px solid var(--gold);
+    flex:none;
+  }
+  .brand{display:flex;flex-direction:column;line-height:1.05;}
+  .brand b{font-size:17px;font-weight:800;letter-spacing:.3px;}
+  .brand span{font-size:11px;color:var(--text-mute);letter-spacing:1.5px;text-transform:uppercase;}
+  .tabs{margin-left:auto;display:flex;gap:6px;background:var(--panel);padding:4px;border-radius:999px;border:1px solid var(--line);}
+  .tab-btn{
+    appearance:none;border:none;background:transparent;color:var(--text-mute);
+    font-family:'Kanit';font-size:13px;font-weight:600;padding:8px 14px;border-radius:999px;
+    cursor:pointer;transition:.15s;white-space:nowrap;
+  }
+  .tab-btn.active{background:var(--red);color:#fff;box-shadow:0 2px 10px rgba(200,16,46,.4);}
+  .tab-btn:not(.active):hover{color:var(--text);}
+  .status-dot{width:8px;height:8px;border-radius:50%;background:#4a4a4a;flex:none;}
+  .status-dot.on{background:#3ecf7a;box-shadow:0 0 8px #3ecf7a;}
+  .status-dot.off{background:var(--red);box-shadow:0 0 8px var(--red);}
+
+  @media (max-width:720px){
+    .brand span{display:none;}
+    .tabs{position:fixed;bottom:0;left:0;right:0;top:auto;margin:0;border-radius:0;
+      justify-content:space-around;padding:8px 4px calc(8px + env(safe-area-inset-bottom));
+      background:rgba(10,10,12,.97);border:none;border-top:1px solid var(--line);z-index:50;}
+    .tab-btn{flex:1;text-align:center;padding:9px 4px;font-size:11.5px;}
+    body{padding-bottom:64px;}
+  }
+
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 18px 60px;}
+  .view{display:none;animation:fadein .25s ease;}
+  .view.active{display:block;}
+  @keyframes fadein{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+
+  h1.page-title{font-size:22px;font-weight:800;margin:0 0 4px;display:flex;align-items:center;gap:10px;}
+  .page-sub{color:var(--text-mute);font-size:13px;margin:0 0 20px;}
+
+  .btn{
+    font-family:'Kanit';font-weight:600;font-size:14px;border-radius:10px;border:1px solid var(--line-strong);
+    background:var(--panel2);color:var(--text);padding:10px 16px;cursor:pointer;transition:.15s;
+    display:inline-flex;align-items:center;gap:8px;
+  }
+  .btn:hover{border-color:var(--gold);}
+  .btn.primary{background:var(--red);border-color:var(--red);color:#fff;}
+  .btn.primary:hover{background:#e0132f;}
+  .btn.gold{background:var(--gold);border-color:var(--gold);color:#1a1400;font-weight:700;}
+  .btn.ghost{background:transparent;}
+  .btn.danger{color:#ff8a8a;border-color:rgba(255,80,80,.3);}
+  .btn.danger:hover{background:rgba(255,80,80,.1);}
+  .btn.small{padding:6px 12px;font-size:12.5px;}
+  .btn:disabled{opacity:.4;cursor:not-allowed;}
+
+  input,select,textarea{
+    font-family:'Kanit';background:var(--bg2);border:1px solid var(--line-strong);color:var(--text);
+    border-radius:9px;padding:10px 12px;font-size:14px;width:100%;
+  }
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);}
+  label.field-label{font-size:12px;color:var(--text-mute);margin:0 0 5px;display:block;font-weight:500;letter-spacing:.3px;}
+  .field{margin-bottom:12px;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+
+  /* ---------- Setup view ---------- */
+  .setup-card{max-width:560px;margin:40px auto;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:28px;box-shadow:var(--shadow);}
+  .setup-card h2{margin-top:0;}
+  .setup-card ol{color:var(--text-mute);font-size:13.5px;line-height:1.9;padding-left:20px;}
+  .setup-card code{background:#000;padding:1px 6px;border-radius:5px;color:var(--gold-soft);}
+
+  /* ---------- Squad view ---------- */
+  .squad-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;}
+  .player-card{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px;
+    display:flex;flex-direction:column;gap:8px;position:relative;transition:.15s;
+  }
+  .player-card:hover{border-color:var(--line-strong);}
+  .player-top{display:flex;align-items:center;gap:10px;}
+  .num-badge{
+    width:34px;height:34px;border-radius:50%;background:var(--red);border:2px solid var(--gold);
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:#fff;flex:none;
+  }
+  .avatar{width:44px;height:44px;border-radius:50%;object-fit:cover;background:#2a2c30;border:2px solid var(--line-strong);flex:none;}
+  .avatar-fallback{width:44px;height:44px;border-radius:50%;background:#2a2c30;border:2px solid var(--line-strong);display:flex;align-items:center;justify-content:center;color:var(--text-mute2);font-size:11px;flex:none;}
+  .pname{font-weight:700;font-size:15px;}
+  .ppos{font-size:11.5px;color:var(--gold-soft);letter-spacing:.5px;}
+  .pcard-actions{display:flex;gap:6px;margin-top:auto;}
+  .staff-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;}
+  .staff-chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 14px 8px 8px;display:flex;align-items:center;gap:8px;font-size:13px;}
+  .staff-chip .role{color:var(--text-mute);font-size:11px;}
+  .section-label{font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-mute);margin:26px 0 10px;font-weight:600;}
+  .empty-note{color:var(--text-mute);font-size:13.5px;padding:20px;text-align:center;border:1px dashed var(--line-strong);border-radius:12px;}
+
+  /* modal */
+  .modal-back{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px;}
+  .modal{background:var(--panel);border:1px solid var(--line-strong);border-radius:var(--radius);padding:22px;max-width:440px;width:100%;box-shadow:var(--shadow);max-height:88vh;overflow-y:auto;}
+  .modal h3{margin:0 0 16px;font-size:17px;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;}
+
+  /* ---------- Tactics view ---------- */
+  .tactics-layout{display:grid;grid-template-columns:250px 1fr;gap:18px;align-items:start;}
+  @media (max-width:900px){.tactics-layout{grid-template-columns:1fr;}}
+
+  .side-panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px;position:sticky;top:78px;}
+  @media (max-width:900px){.side-panel{position:static;}}
+  .bench-list{display:flex;flex-direction:column;gap:8px;margin-top:10px;max-height:340px;overflow-y:auto;}
+  .bench-chip{
+    display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:10px;padding:7px 9px;cursor:grab;user-select:none;touch-action:none;
+  }
+  .bench-chip:active{cursor:grabbing;}
+  .bench-chip .num-badge{width:26px;height:26px;font-size:11px;border-width:1.5px;}
+  .bench-chip .bname{font-size:13px;font-weight:600;}
+  .bench-chip .bpos{font-size:10px;color:var(--text-mute);}
+
+  .controls-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
+  .seg{display:flex;background:var(--panel2);border-radius:10px;padding:3px;border:1px solid var(--line);}
+  .seg button{appearance:none;border:none;background:transparent;color:var(--text-mute);font-family:'Kanit';font-weight:600;font-size:13px;padding:7px 14px;border-radius:8px;cursor:pointer;}
+  .seg button.active{background:var(--gold);color:#1a1400;}
+
+  .pitch-wrap{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px;}
+  .pitch{
+    position:relative;width:100%;aspect-ratio:68/100;max-width:560px;margin:0 auto;
+    background:
+      repeating-linear-gradient(180deg, var(--pitch) 0 12.5%, var(--pitch-dark) 12.5% 25%);
+    border:3px solid rgba(255,255,255,.55);border-radius:6px;overflow:hidden;
+    touch-action:none;
+  }
+  .pitch::before,.pitch::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.55);border-radius:50%;width:26%;aspect-ratio:1;}
+  .pitch::after{width:2%;border-width:0;background:rgba(255,255,255,.7);}
+  .halfline{position:absolute;left:0;right:0;top:50%;height:2px;background:rgba(255,255,255,.55);}
+  .box{position:absolute;left:50%;transform:translateX(-50%);border:2px solid rgba(255,255,255,.55);}
+  .box.top{top:0;width:60%;height:15%;border-top:none;}
+  .box.bottom{bottom:0;width:60%;height:15%;border-bottom:none;}
+  .box.top.small{width:32%;height:7%;}
+  .box.bottom.small{width:32%;height:7%;}
+
+  .slot{
+    position:absolute;width:15%;aspect-ratio:1;transform:translate(-50%,-50%);
+    border:2px dashed rgba(255,255,255,.35);border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    color:rgba(255,255,255,.4);font-size:11px;
+  }
+  .chip{
+    position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px;
+    cursor:grab;touch-action:none;z-index:5;width:15%;
+  }
+  .chip.dragging{z-index:20;cursor:grabbing;filter:drop-shadow(0 6px 10px rgba(0,0,0,.6));}
+  .chip .num-badge{width:30px;height:30px;font-size:13px;box-shadow:0 3px 8px rgba(0,0,0,.5);}
+  .chip .cname{font-size:10.5px;font-weight:700;background:rgba(0,0,0,.55);padding:1px 6px;border-radius:5px;white-space:nowrap;max-width:70px;overflow:hidden;text-overflow:ellipsis;}
+
+  .pitch-toolbar{display:flex;justify-content:space-between;align-items:center;margin-top:14px;gap:8px;flex-wrap:wrap;}
+
+  /* history */
+  .history-list{display:flex;flex-direction:column;gap:10px;}
+  .history-item{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .history-item .hi-name{font-weight:700;font-size:15px;}
+  .history-item .hi-meta{font-size:12px;color:var(--text-mute);}
+  .history-item .hi-actions{margin-left:auto;display:flex;gap:8px;}
+
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--gold);
+    padding:10px 20px;border-radius:999px;font-size:13.5px;z-index:200;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:.25s;}
+  .toast.show{opacity:1;bottom:34px;}
+  @media (max-width:720px){.toast{bottom:74px;}.toast.show{bottom:88px;}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="crest" id="crestEl">⚽</div>
+  <div class="brand"><b id="teamNameEl">ทีมของคุณ</b><span>Squad & Tactics Manager</span></div>
+  <div class="status-dot" id="connDot" title="สถานะการเชื่อมต่อ"></div>
+  <button class="btn ghost small" id="btnTeamSettings" title="ตั้งชื่อทีม" style="margin-left:6px;padding:6px 9px;display:none;">⚙</button>
+  <div class="tabs" id="tabs" style="display:none;">
+    <button class="tab-btn active" data-view="squad">ผู้เล่น</button>
+    <button class="tab-btn" data-view="tactics">แท็กติก</button>
+    <button class="tab-btn" data-view="history">ประวัติแผน</button>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- SETUP VIEW -->
+  <div class="view active" id="view-setup">
+    <div class="setup-card">
+      <h2>⚙️ ตั้งค่าฐานข้อมูล (ครั้งแรกเท่านั้น)</h2>
+      <p style="color:var(--text-mute);font-size:13.5px;">แอปนี้ใช้ Firebase Firestore เพื่อให้เก็บข้อมูลผู้เล่นและแผนแท็กติก แล้วเปิดดู/แก้ไขได้จากหลายเครื่อง (มือถือโค้ช, มือถือผู้จัดการทีม ฯลฯ)</p>
+      <ol>
+        <li>ไปที่ <code>console.firebase.google.com</code> สร้างโปรเจกต์ใหม่ (หรือใช้โปรเจกต์ Firebase อื่นที่มีอยู่แล้วก็ได้)</li>
+        <li>เปิดใช้ <b>Firestore Database</b> (โหมด test mode พอสำหรับเริ่มต้น)</li>
+        <li>ไปที่ ⚙️ Project settings → เลื่อนลงหา "Your apps" → คัดลอกค่า <code>firebaseConfig</code></li>
+        <li>วางทั้งก้อนลงในช่องด้านล่างนี้</li>
+      </ol>
+      <div class="field">
+        <label class="field-label">วางค่า firebaseConfig ทั้งก้อน (เช่น { apiKey: "...", ... })</label>
+        <textarea id="configInput" rows="7" placeholder='{
+  apiKey: "AIza...",
+  authDomain: "xxx.firebaseapp.com",
+  projectId: "xxx",
+  storageBucket: "xxx.appspot.com",
+  messagingSenderId: "...",
+  appId: "..."
+}'></textarea>
+      </div>
+      <div id="setupError" style="color:#ff8a8a;font-size:13px;margin-bottom:10px;display:none;"></div>
+      <button class="btn primary" id="btnSaveConfig" style="width:100%;justify-content:center;">เชื่อมต่อฐานข้อมูล</button>
+      <p style="color:var(--text-mute2);font-size:11.5px;margin-top:14px;">ค่านี้จะถูกบันทึกไว้ในเครื่อง/เบราว์เซอร์นี้เท่านั้น ต้องตั้งค่าซ้ำในแต่ละเครื่องที่ใช้ (ครั้งเดียวต่อเครื่อง) โดยใช้ config ชุดเดียวกัน</p>
+    </div>
+  </div>
+
+  <!-- SQUAD VIEW -->
+  <div class="view" id="view-squad">
+    <h1 class="page-title">👥 ฐานข้อมูลผู้เล่น</h1>
+    <p class="page-sub">จัดการรายชื่อนักเตะ เบอร์เสื้อ ตำแหน่ง และรูปภาพ</p>
+
+    <div class="section-label">ทีมงาน</div>
+    <div class="staff-row" id="staffRow"></div>
+    <button class="btn small" id="btnAddStaff">+ เพิ่มทีมงาน</button>
+
+    <div class="section-label" style="display:flex;align-items:center;justify-content:space-between;">
+      <span>รายชื่อนักเตะ (<span id="playerCount">0</span>)</span>
+    </div>
+    <div style="margin-bottom:14px;">
+      <button class="btn gold" id="btnAddPlayer">+ เพิ่มผู้เล่น</button>
+      <button class="btn small" id="btnImportRoster">นำเข้ารายชื่อจากรูปทีม (15 คน)</button>
+    </div>
+    <div class="squad-grid" id="squadGrid"></div>
+  </div>
+
+  <!-- TACTICS VIEW -->
+  <div class="view" id="view-tactics">
+    <h1 class="page-title">📋 กระดานแท็กติก</h1>
+    <p class="page-sub">เลือกรูปแบบสนาม เลือกฟอร์เมชัน แล้วลากผู้เล่นจากรายชื่อสำรองลงในตำแหน่งบนสนาม — จากนั้นลากปรับตำแหน่งได้อิสระอีกที</p>
+
+    <div class="controls-row">
+      <div class="seg" id="segMode">
+        <button data-mode="7" class="active">ฟุตบอล 7 คน</button>
+        <button data-mode="11">ฟุตบอล 11 คน</button>
+      </div>
+      <select id="formationSelect" style="width:auto;min-width:170px;"></select>
+      <button class="btn small ghost" id="btnClearPitch">ล้างสนาม</button>
+    </div>
+
+    <div class="tactics-layout">
+      <div class="side-panel">
+        <label class="field-label">ผู้เล่นสำรอง (ลากลงสนาม)</label>
+        <input id="benchSearch" placeholder="ค้นหาชื่อ/เบอร์..." style="margin-top:8px;">
+        <div class="bench-list" id="benchList"></div>
+      </div>
+
+      <div class="pitch-wrap">
+        <div class="pitch" id="pitch">
+          <div class="halfline"></div>
+          <div class="box top"></div>
+          <div class="box bottom"></div>
+          <div class="box top small"></div>
+          <div class="box bottom small"></div>
+        </div>
+        <div class="pitch-toolbar">
+          <div style="font-size:12px;color:var(--text-mute);" id="pitchInfo"></div>
+          <div style="display:flex;gap:8px;">
+            <input id="tacticName" placeholder="ตั้งชื่อแผน เช่น เกมรับ 5-17" style="width:210px;">
+            <button class="btn primary" id="btnSaveTactic">💾 บันทึกแผน</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORY VIEW -->
+  <div class="view" id="view-history">
+    <h1 class="page-title">🕘 ประวัติแผนแท็กติก</h1>
+    <p class="page-sub">แผนที่เคยบันทึกไว้ทั้งหมด กดเพื่อโหลดกลับมาแก้ไขบนกระดาน</p>
+    <div class="history-list" id="historyList"></div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================= STATE ============================= */
+let db = null;
+let players = [];   // {id, number, name, nickname, position, photo}
+let staff = [];     // {id, name, role}
+let tactics = [];   // saved plans
+let unsubPlayers=null, unsubStaff=null, unsubTactics=null;
+
+let currentMode = '7';
+let currentFormation = null;
+let assignment = {};      // slotIndex -> playerId
+let freePos = {};         // playerId -> {x,y} percent override
+let editingPlayerId = null;
+let editingStaffId = null;
+let dragCtx = null;       // active drag context
+
+const FORMATIONS = {
+  '7': {
+    '2-3-1': [{r:'GK',x:50,y:92},{r:'DF',x:30,y:70},{r:'DF',x:70,y:70},{r:'MF',x:20,y:45},{r:'MF',x:50,y:45},{r:'MF',x:80,y:45},{r:'FW',x:50,y:15}],
+    '3-2-1': [{r:'GK',x:50,y:92},{r:'DF',x:20,y:70},{r:'DF',x:50,y:70},{r:'DF',x:80,y:70},{r:'MF',x:35,y:45},{r:'MF',x:65,y:45},{r:'FW',x:50,y:15}],
+    '3-1-2': [{r:'GK',x:50,y:92},{r:'DF',x:20,y:70},{r:'DF',x:50,y:70},{r:'DF',x:80,y:70},{r:'MF',x:50,y:45},{r:'FW',x:35,y:15},{r:'FW',x:65,y:15}],
+    '1-3-2': [{r:'GK',x:50,y:92},{r:'DF',x:50,y:70},{r:'MF',x:20,y:45},{r:'MF',x:50,y:45},{r:'MF',x:80,y:45},{r:'FW',x:35,y:15},{r:'FW',x:65,y:15}],
+    '2-1-3': [{r:'GK',x:50,y:92},{r:'DF',x:30,y:70},{r:'DF',x:70,y:70},{r:'MF',x:50,y:45},{r:'FW',x:20,y:15},{r:'FW',x:50,y:15},{r:'FW',x:80,y:15}]
+  },
+  '11': {
+    '4-4-2': [{r:'GK',x:50,y:94},{r:'DF',x:15,y:76},{r:'DF',x:38,y:78},{r:'DF',x:62,y:78},{r:'DF',x:85,y:76},{r:'MF',x:15,y:50},{r:'MF',x:38,y:48},{r:'MF',x:62,y:48},{r:'MF',x:85,y:50},{r:'FW',x:38,y:18},{r:'FW',x:62,y:18}],
+    '4-3-3': [{r:'GK',x:50,y:94},{r:'DF',x:15,y:76},{r:'DF',x:38,y:78},{r:'DF',x:62,y:78},{r:'DF',x:85,y:76},{r:'MF',x:25,y:50},{r:'MF',x:50,y:48},{r:'MF',x:75,y:50},{r:'FW',x:15,y:18},{r:'FW',x:50,y:15},{r:'FW',x:85,y:18}],
+    '3-5-2': [{r:'GK',x:50,y:94},{r:'DF',x:25,y:78},{r:'DF',x:50,y:80},{r:'DF',x:75,y:78},{r:'MF',x:10,y:50},{r:'MF',x:30,y:48},{r:'MF',x:50,y:46},{r:'MF',x:70,y:48},{r:'MF',x:90,y:50},{r:'FW',x:38,y:18},{r:'FW',x:62,y:18}],
+    '4-2-3-1': [{r:'GK',x:50,y:94},{r:'DF',x:15,y:78},{r:'DF',x:38,y:80},{r:'DF',x:62,y:80},{r:'DF',x:85,y:78},{r:'DM',x:35,y:58},{r:'DM',x:65,y:58},{r:'AM',x:20,y:35},{r:'AM',x:50,y:33},{r:'AM',x:80,y:35},{r:'FW',x:50,y:14}],
+    '3-4-3': [{r:'GK',x:50,y:94},{r:'DF',x:25,y:78},{r:'DF',x:50,y:80},{r:'DF',x:75,y:78},{r:'MF',x:15,y:50},{r:'MF',x:38,y:48},{r:'MF',x:62,y:48},{r:'MF',x:85,y:50},{r:'FW',x:15,y:18},{r:'FW',x:50,y:15},{r:'FW',x:85,y:18}],
+    '4-5-1': [{r:'GK',x:50,y:94},{r:'DF',x:15,y:78},{r:'DF',x:38,y:80},{r:'DF',x:62,y:80},{r:'DF',x:85,y:78},{r:'MF',x:10,y:50},{r:'MF',x:30,y:48},{r:'MF',x:50,y:46},{r:'MF',x:70,y:48},{r:'MF',x:90,y:50},{r:'FW',x:50,y:16}]
+  }
+};
+
+let teamInfo = {name:'ทีมของคุณ', abbr:''};
+
+// Roster imported from the team photo — user-triggered import, not a default seed.
+const IMPORT_ROSTER = [
+  {number:1,name:'เลง',position:'GK'},{number:2,name:'แจ่ง',position:''},{number:3,name:'เขี้ยว',position:''},
+  {number:4,name:'เช',position:''},{number:5,name:'ทัวร์',position:''},{number:6,name:'หาร',position:''},
+  {number:7,name:'บัง',position:''},{number:8,name:'สเน็ก',position:''},{number:9,name:'เก่ง',position:''},
+  {number:10,name:'อุ้ย',position:''},{number:11,name:'พี',position:'GK'},{number:12,name:'จีโน่',position:''},
+  {number:13,name:'ฮอท',position:''},{number:14,name:'โท',position:''},{number:15,name:'กอนี่',position:''}
+];
+const IMPORT_STAFF = [
+  {name:'ไหม', role:'ผู้จัดการทีม'},
+  {name:'แอ๊ค', role:'หัวหน้าผู้ฝึกสอน'}
+];
+
+/* ============================= UTIL ============================= */
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer=setTimeout(()=>t.classList.remove('show'),2200);
+}
+function uid(){return Math.random().toString(36).slice(2,10)+Date.now().toString(36);}
+function setView(name){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+name).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.view===name));
+}
+
+/* ============================= FIREBASE SETUP ============================= */
+// Default project config — safe to embed: Firestore access is controlled by security rules, not by hiding this key.
+// Leave as null to force the manual setup screen for a fresh/different project.
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAwJi9rXzmTUjaYWR5WJbERF-28OvjkWkk",
+  authDomain: "tactical-97b95.firebaseapp.com",
+  projectId: "tactical-97b95",
+  storageBucket: "tactical-97b95.firebasestorage.app",
+  messagingSenderId: "748008368798",
+  appId: "1:748008368798:web:54871b2392cc7742d8298f"
+};
+
+function tryAutoConnect(){
+  const saved = localStorage.getItem('tactics_fbconfig');
+  if(saved){
+    try{ initFirebase(JSON.parse(saved)); return; }catch(e){ console.warn(e); }
+  }
+  if(DEFAULT_FIREBASE_CONFIG){
+    try{ initFirebase(DEFAULT_FIREBASE_CONFIG); return; }catch(e){ console.warn(e); }
+  }
+  setView('setup');
+}
+
+document.getElementById('btnSaveConfig').addEventListener('click', ()=>{
+  const raw = document.getElementById('configInput').value.trim();
+  const errEl = document.getElementById('setupError');
+  errEl.style.display='none';
+  if(!raw){ errEl.textContent='กรุณาวางค่า firebaseConfig ก่อน'; errEl.style.display='block'; return; }
+  let cfg;
+  try{
+    // allow object-literal style (unquoted keys) by wrapping in parens and using Function
+    cfg = Function('"use strict"; return (' + raw + ')')();
+  }catch(e){
+    errEl.textContent='รูปแบบ config ไม่ถูกต้อง กรุณาคัดลอกจาก Firebase Console อีกครั้ง'; errEl.style.display='block'; return;
+  }
+  if(!cfg || !cfg.projectId){
+    errEl.textContent='ไม่พบ projectId ใน config กรุณาตรวจสอบอีกครั้ง'; errEl.style.display='block'; return;
+  }
+  try{
+    initFirebase(cfg);
+    localStorage.setItem('tactics_fbconfig', JSON.stringify(cfg));
+  }catch(e){
+    errEl.textContent='เชื่อมต่อไม่สำเร็จ: '+e.message; errEl.style.display='block';
+  }
+});
+
+function initFirebase(cfg){
+  if(!firebase.apps.length) firebase.initializeApp(cfg);
+  db = firebase.firestore();
+  document.getElementById('tabs').style.display='flex';
+  document.getElementById('btnTeamSettings').style.display='inline-flex';
+  document.getElementById('connDot').classList.add('on');
+  setView('squad');
+  listenPlayers();
+  listenStaff();
+  listenTactics();
+  listenTeamInfo();
+  buildFormationOptions();
+}
+
+/* ============================= FIRESTORE LISTENERS ============================= */
+function listenPlayers(){
+  if(unsubPlayers) unsubPlayers();
+  unsubPlayers = db.collection('squad_players').orderBy('number').onSnapshot(snap=>{
+    players = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderSquad(); renderBench(); renderPitch();
+  }, err=>{ console.error(err); toast('อ่านข้อมูลผู้เล่นไม่ได้ ตรวจสอบ Firestore rules'); });
+}
+function listenStaff(){
+  if(unsubStaff) unsubStaff();
+  unsubStaff = db.collection('squad_staff').onSnapshot(snap=>{
+    staff = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderStaff();
+  });
+}
+function listenTactics(){
+  if(unsubTactics) unsubTactics();
+  unsubTactics = db.collection('tactic_plans').orderBy('createdAt','desc').onSnapshot(snap=>{
+    tactics = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderHistory();
+  });
+}
+function listenTeamInfo(){
+  db.collection('app_meta').doc('team_info').onSnapshot(doc=>{
+    if(doc.exists){
+      teamInfo = doc.data();
+    } else {
+      teamInfo = {name:'ทีมของคุณ', abbr:''};
+    }
+    document.getElementById('teamNameEl').textContent = teamInfo.name || 'ทีมของคุณ';
+    document.getElementById('crestEl').textContent = teamInfo.abbr ? teamInfo.abbr.slice(0,3).toUpperCase() : '⚽';
+  }, ()=>{});
+}
+document.getElementById('btnTeamSettings').addEventListener('click', ()=>{
+  showModal(`
+    <h3>ตั้งค่าชื่อทีม</h3>
+    <div class="field"><label class="field-label">ชื่อทีม</label><input id="mTeamName" value="${esc(teamInfo.name||'')}" placeholder="เช่น ทีมของคุณ"></div>
+    <div class="field"><label class="field-label">อักษรย่อทีม (แสดงในโลโก้ ไม่เกิน 3 ตัวอักษร)</label><input id="mTeamAbbr" value="${esc(teamInfo.abbr||'')}" placeholder="เช่น FC"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn primary" onclick="saveTeamInfo()">บันทึก</button>
+    </div>
+  `);
+});
+window.saveTeamInfo = async ()=>{
+  const name = document.getElementById('mTeamName').value.trim() || 'ทีมของคุณ';
+  const abbr = document.getElementById('mTeamAbbr').value.trim();
+  await db.collection('app_meta').doc('team_info').set({name, abbr});
+  closeModal(); toast('บันทึกชื่อทีมแล้ว');
+};
+
+/* ============================= TABS ============================= */
+document.getElementById('tabs').addEventListener('click', e=>{
+  const b = e.target.closest('.tab-btn'); if(!b) return;
+  setView(b.dataset.view);
+});
+
+/* ============================= STAFF RENDER / CRUD ============================= */
+function renderStaff(){
+  const row = document.getElementById('staffRow');
+  row.innerHTML = staff.map(s=>`
+    <div class="staff-chip">
+      <div class="num-badge" style="width:26px;height:26px;font-size:11px;">★</div>
+      <div><b>${esc(s.name)}</b><div class="role">${esc(s.role||'')}</div></div>
+      <button class="btn small ghost" onclick="editStaff('${s.id}')" style="padding:4px 8px;">✎</button>
+    </div>`).join('') || `<div class="empty-note" style="width:100%;">ยังไม่มีทีมงาน</div>`;
+}
+document.getElementById('btnAddStaff').addEventListener('click', ()=>openStaffModal());
+window.editStaff = (id)=> openStaffModal(staff.find(s=>s.id===id));
+function openStaffModal(s){
+  editingStaffId = s? s.id : null;
+  showModal(`
+    <h3>${s?'แก้ไขทีมงาน':'เพิ่มทีมงาน'}</h3>
+    <div class="field"><label class="field-label">ชื่อ</label><input id="mStaffName" value="${s?esc(s.name):''}"></div>
+    <div class="field"><label class="field-label">ตำแหน่ง</label><input id="mStaffRole" value="${s?esc(s.role||''):''}" placeholder="เช่น ผู้จัดการทีม / หัวหน้าผู้ฝึกสอน"></div>
+    <div class="modal-actions">
+      ${s?'<button class="btn danger" onclick="deleteStaff()">ลบ</button>':''}
+      <button class="btn ghost" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn primary" onclick="saveStaff()">บันทึก</button>
+    </div>
+  `);
+}
+window.saveStaff = async ()=>{
+  const name = document.getElementById('mStaffName').value.trim();
+  const role = document.getElementById('mStaffRole').value.trim();
+  if(!name) return toast('กรุณากรอกชื่อ');
+  if(editingStaffId){
+    await db.collection('squad_staff').doc(editingStaffId).update({name, role});
+  }else{
+    await db.collection('squad_staff').add({name, role});
+  }
+  closeModal(); toast('บันทึกแล้ว');
+};
+window.deleteStaff = async ()=>{
+  if(editingStaffId){ await db.collection('squad_staff').doc(editingStaffId).delete(); }
+  closeModal(); toast('ลบแล้ว');
+};
+
+/* ============================= PLAYERS RENDER / CRUD ============================= */
+function esc(s){ return (s||'').toString().replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+function renderSquad(){
+  document.getElementById('playerCount').textContent = players.length;
+  const grid = document.getElementById('squadGrid');
+  if(!players.length){ grid.innerHTML = `<div class="empty-note">ยังไม่มีผู้เล่น กด "+ เพิ่มผู้เล่น" เพื่อเริ่มต้น</div>`; return; }
+  grid.innerHTML = players.map(p=>`
+    <div class="player-card">
+      <div class="player-top">
+        ${p.photo? `<img class="avatar" src="${esc(p.photo)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'avatar-fallback',textContent:'IMG'}))">` : `<div class="avatar-fallback">IMG</div>`}
+        <div>
+          <div class="pname">${esc(p.name)}${p.nickname? ' <span style=\"color:var(--text-mute);font-weight:400;font-size:12px;\">('+esc(p.nickname)+')</span>':''}</div>
+          <div class="ppos">${p.position? esc(p.position): 'ยังไม่ระบุตำแหน่ง'}</div>
+        </div>
+        <div class="num-badge" style="margin-left:auto;">${esc(p.number)}</div>
+      </div>
+      <div class="pcard-actions">
+        <button class="btn small" onclick="openPlayerModal('${p.id}')">✎ แก้ไข</button>
+        <button class="btn small danger" onclick="confirmDeletePlayer('${p.id}')">ลบ</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+document.getElementById('btnAddPlayer').addEventListener('click', ()=>openPlayerModal());
+document.getElementById('btnImportRoster').addEventListener('click', ()=>{
+  const listHtml = IMPORT_ROSTER.map(p=>`<span style="display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 9px;margin:2px;font-size:12.5px;">#${p.number} ${esc(p.name)}</span>`).join('');
+  showModal(`
+    <h3>นำเข้ารายชื่อผู้เล่น</h3>
+    <p style="color:var(--text-mute);font-size:13.5px;">จะเพิ่มผู้เล่น 15 คน และทีมงาน 2 คน (ผู้จัดการทีม/หัวหน้าผู้ฝึกสอน) ตามรายชื่อในรูปที่ให้มา — ยังไม่ใส่รูปภาพ ไปเพิ่มรูปทีหลังได้ที่หน้าแก้ไขผู้เล่นแต่ละคน</p>
+    <div style="margin:10px 0;">${listHtml}</div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn primary" onclick="doImportRoster()">นำเข้าเลย</button>
+    </div>
+  `);
+});
+window.doImportRoster = async ()=>{
+  const existingNumbers = new Set(players.map(p=>p.number));
+  const batch = db.batch();
+  let added=0;
+  IMPORT_ROSTER.forEach(p=>{
+    if(existingNumbers.has(p.number)) return; // skip if number already used
+    const ref = db.collection('squad_players').doc();
+    batch.set(ref, {...p, nickname:'', photo:''});
+    added++;
+  });
+  const existingStaffNames = new Set(staff.map(s=>s.name));
+  IMPORT_STAFF.forEach(s=>{
+    if(existingStaffNames.has(s.name)) return;
+    const ref = db.collection('squad_staff').doc();
+    batch.set(ref, s);
+  });
+  await batch.commit();
+  closeModal();
+  toast(added>0 ? `นำเข้าผู้เล่น ${added} คนแล้ว` : 'มีผู้เล่นเบอร์เหล่านี้อยู่แล้ว จึงข้ามไป');
+};
+window.openPlayerModal = (id)=>{
+  const p = id? players.find(x=>x.id===id): null;
+  editingPlayerId = id||null;
+  showModal(`
+    <h3>${p?'แก้ไขผู้เล่น':'เพิ่มผู้เล่น'}</h3>
+    <div class="row2">
+      <div class="field"><label class="field-label">เบอร์เสื้อ</label><input id="mNum" type="number" value="${p?p.number:''}"></div>
+      <div class="field"><label class="field-label">ตำแหน่ง</label>
+        <select id="mPos">
+          <option value="">ยังไม่ระบุ</option>
+          <option value="GK" ${p&&p.position==='GK'?'selected':''}>GK - ผู้รักษาประตู</option>
+          <option value="DF" ${p&&p.position==='DF'?'selected':''}>DF - กองหลัง</option>
+          <option value="MF" ${p&&p.position==='MF'?'selected':''}>MF - กองกลาง</option>
+          <option value="FW" ${p&&p.position==='FW'?'selected':''}>FW - กองหน้า</option>
+        </select>
+      </div>
+    </div>
+    <div class="field"><label class="field-label">ชื่อ</label><input id="mName" value="${p?esc(p.name):''}"></div>
+    <div class="field"><label class="field-label">ชื่อเล่น (ถ้ามี)</label><input id="mNick" value="${p?esc(p.nickname||''):''}"></div>
+    <div class="field"><label class="field-label">ลิงก์รูปภาพ (URL)</label><input id="mPhoto" value="${p?esc(p.photo||''):''}" placeholder="https://..."></div>
+    <div class="modal-actions">
+      ${p?'<button class="btn danger" onclick="confirmDeletePlayer(\''+p.id+'\')">ลบ</button>':''}
+      <button class="btn ghost" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn primary" onclick="savePlayer()">บันทึก</button>
+    </div>
+  `);
+};
+window.savePlayer = async ()=>{
+  const number = parseInt(document.getElementById('mNum').value,10);
+  const position = document.getElementById('mPos').value;
+  const name = document.getElementById('mName').value.trim();
+  const nickname = document.getElementById('mNick').value.trim();
+  const photo = document.getElementById('mPhoto').value.trim();
+  if(!name || isNaN(number)) return toast('กรุณากรอกชื่อและเบอร์เสื้อให้ครบ');
+  const data = {number, position, name, nickname, photo};
+  if(editingPlayerId){
+    await db.collection('squad_players').doc(editingPlayerId).update(data);
+  }else{
+    await db.collection('squad_players').add(data);
+  }
+  closeModal(); toast('บันทึกข้อมูลผู้เล่นแล้ว');
+};
+window.confirmDeletePlayer = (id)=>{
+  showModal(`
+    <h3>ลบผู้เล่นคนนี้?</h3>
+    <p style="color:var(--text-mute);font-size:13.5px;">การลบไม่สามารถย้อนกลับได้</p>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn danger" onclick="doDeletePlayer('${id}')">ลบเลย</button>
+    </div>
+  `);
+};
+window.doDeletePlayer = async (id)=>{
+  await db.collection('squad_players').doc(id).delete();
+  closeModal(); toast('ลบผู้เล่นแล้ว');
+};
+
+/* ============================= MODAL ============================= */
+function showModal(html){
+  let back = document.getElementById('modalBack');
+  if(!back){
+    back = document.createElement('div');
+    back.id='modalBack'; back.className='modal-back';
+    back.addEventListener('click', e=>{ if(e.target===back) closeModal(); });
+    document.body.appendChild(back);
+  }
+  back.innerHTML = `<div class="modal">${html}</div>`;
+  back.style.display='flex';
+}
+window.closeModal = ()=>{ const b=document.getElementById('modalBack'); if(b) b.style.display='none'; };
+
+/* ============================= TACTICS: MODE / FORMATION ============================= */
+document.getElementById('segMode').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b) return;
+  currentMode = b.dataset.mode;
+  document.querySelectorAll('#segMode button').forEach(x=>x.classList.toggle('active', x===b));
+  assignment = {}; freePos = {};
+  buildFormationOptions();
+  renderPitch(); renderBench();
+});
+function buildFormationOptions(){
+  const sel = document.getElementById('formationSelect');
+  const opts = Object.keys(FORMATIONS[currentMode]);
+  sel.innerHTML = opts.map(f=>`<option value="${f}">${f}</option>`).join('');
+  currentFormation = opts[0];
+  sel.value = currentFormation;
+}
+document.getElementById('formationSelect').addEventListener('change', e=>{
+  currentFormation = e.target.value;
+  assignment = {}; freePos = {};
+  renderPitch(); renderBench();
+});
+document.getElementById('btnClearPitch').addEventListener('click', ()=>{
+  assignment = {}; freePos = {};
+  renderPitch(); renderBench();
+  toast('ล้างสนามแล้ว');
+});
+
+/* ============================= BENCH RENDER ============================= */
+document.getElementById('benchSearch').addEventListener('input', renderBench);
+function renderBench(){
+  const q = document.getElementById('benchSearch').value.trim().toLowerCase();
+  const assignedIds = new Set(Object.values(assignment));
+  const list = players.filter(p=>!assignedIds.has(p.id))
+    .filter(p=> !q || p.name.toLowerCase().includes(q) || String(p.number).includes(q));
+  const el = document.getElementById('benchList');
+  if(!list.length){ el.innerHTML = `<div class="empty-note">ไม่มีผู้เล่นในรายชื่อสำรอง</div>`; return; }
+  el.innerHTML = list.map(p=>`
+    <div class="bench-chip" draggable="false" data-pid="${p.id}">
+      <div class="num-badge">${esc(p.number)}</div>
+      <div><div class="bname">${esc(p.name)}</div><div class="bpos">${p.position||'-'}</div></div>
+    </div>
+  `).join('');
+  el.querySelectorAll('.bench-chip').forEach(chip=>{
+    chip.addEventListener('pointerdown', onBenchPointerDown);
+  });
+}
+
+/* ============================= DRAG LOGIC ============================= */
+function nearestSlot(clientX, clientY){
+  const pitch = document.getElementById('pitch');
+  const rect = pitch.getBoundingClientRect();
+  if(clientX < rect.left-40 || clientX > rect.right+40 || clientY < rect.top-40 || clientY > rect.bottom+40) return null;
+  const slots = FORMATIONS[currentMode][currentFormation];
+  let best=-1, bestDist=Infinity;
+  slots.forEach((s,i)=>{
+    const sx = rect.left + rect.width*s.x/100;
+    const sy = rect.top + rect.height*s.y/100;
+    const d = Math.hypot(clientX-sx, clientY-sy);
+    if(d<bestDist){bestDist=d; best=i;}
+  });
+  return {rect, slotIndex:best};
+}
+
+function onBenchPointerDown(e){
+  const chip = e.currentTarget;
+  const pid = chip.dataset.pid;
+  e.preventDefault();
+  const ghost = document.createElement('div');
+  ghost.style.position='fixed'; ghost.style.zIndex=999; ghost.style.pointerEvents='none';
+  ghost.style.left=(e.clientX-24)+'px'; ghost.style.top=(e.clientY-24)+'px';
+  const p = players.find(x=>x.id===pid);
+  ghost.innerHTML = `<div class="num-badge" style="box-shadow:0 4px 10px rgba(0,0,0,.6);">${esc(p.number)}</div>`;
+  document.body.appendChild(ghost);
+
+  function move(ev){
+    ghost.style.left=(ev.clientX-24)+'px'; ghost.style.top=(ev.clientY-24)+'px';
+  }
+  function up(ev){
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    ghost.remove();
+    const res = nearestSlot(ev.clientX, ev.clientY);
+    if(res && res.slotIndex>=0){
+      assignPlayerToSlot(res.slotIndex, pid);
+    }
+  }
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+}
+
+function assignPlayerToSlot(slotIndex, playerId){
+  // remove player from any other slot first
+  Object.keys(assignment).forEach(k=>{ if(assignment[k]===playerId) delete assignment[k]; });
+  assignment[slotIndex] = playerId;
+  delete freePos[playerId];
+  renderPitch(); renderBench();
+}
+function removeFromPitch(playerId){
+  Object.keys(assignment).forEach(k=>{ if(assignment[k]===playerId) delete assignment[k]; });
+  delete freePos[playerId];
+  renderPitch(); renderBench();
+}
+
+function onChipPointerDown(e){
+  const chip = e.currentTarget;
+  const pid = chip.dataset.pid;
+  e.preventDefault();
+  chip.classList.add('dragging');
+  chip.setPointerCapture && chip.setPointerCapture(e.pointerId);
+  const pitch = document.getElementById('pitch');
+
+  function move(ev){
+    const rect = pitch.getBoundingClientRect();
+    let x = (ev.clientX - rect.left)/rect.width*100;
+    let y = (ev.clientY - rect.top)/rect.height*100;
+    x = Math.max(3,Math.min(97,x)); y = Math.max(3,Math.min(97,y));
+    chip.style.left = x+'%'; chip.style.top = y+'%';
+    chip._x=x; chip._y=y;
+  }
+  function up(ev){
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    chip.classList.remove('dragging');
+    const rect = pitch.getBoundingClientRect();
+    if(ev.clientX<rect.left-60||ev.clientX>rect.right+60||ev.clientY<rect.top-60||ev.clientY>rect.bottom+60){
+      // dropped off pitch -> send back to bench
+      removeFromPitch(pid);
+    } else if(chip._x!==undefined){
+      freePos[pid] = {x:chip._x, y:chip._y};
+    }
+  }
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+}
+
+/* ============================= PITCH RENDER ============================= */
+function renderPitch(){
+  const pitch = document.getElementById('pitch');
+  pitch.querySelectorAll('.slot,.chip').forEach(n=>n.remove());
+  const slots = FORMATIONS[currentMode][currentFormation] || [];
+
+  slots.forEach((s,i)=>{
+    if(assignment[i]) return; // occupied -> chip drawn instead
+    const d = document.createElement('div');
+    d.className='slot';
+    d.style.left=s.x+'%'; d.style.top=s.y+'%';
+    d.textContent = s.r;
+    pitch.appendChild(d);
+  });
+
+  Object.entries(assignment).forEach(([slotIdx, pid])=>{
+    const p = players.find(x=>x.id===pid); if(!p) return;
+    const slot = slots[slotIdx];
+    const pos = freePos[pid] || {x:slot.x, y:slot.y};
+    const chip = document.createElement('div');
+    chip.className='chip'; chip.dataset.pid=pid;
+    chip.style.left=pos.x+'%'; chip.style.top=pos.y+'%';
+    chip.innerHTML = `<div class="num-badge">${esc(p.number)}</div><div class="cname">${esc(p.nickname||p.name)}</div>`;
+    chip.addEventListener('pointerdown', onChipPointerDown);
+    chip.addEventListener('dblclick', ()=>removeFromPitch(pid));
+    pitch.appendChild(chip);
+  });
+
+  const count = Object.keys(assignment).length;
+  const total = currentMode==='7'?7:11;
+  document.getElementById('pitchInfo').textContent = `จัดตัวแล้ว ${count}/${total} คน · ดับเบิลคลิกผู้เล่นบนสนามเพื่อถอดออก`;
+}
+
+/* ============================= SAVE / LOAD TACTIC ============================= */
+document.getElementById('btnSaveTactic').addEventListener('click', async ()=>{
+  const name = document.getElementById('tacticName').value.trim();
+  if(!name) return toast('กรุณาตั้งชื่อแผนก่อนบันทึก');
+  const slots = FORMATIONS[currentMode][currentFormation];
+  const positions = Object.entries(assignment).map(([slotIdx,pid])=>{
+    const slot = slots[slotIdx];
+    const pos = freePos[pid] || {x:slot.x,y:slot.y};
+    return {playerId:pid, slotIndex:Number(slotIdx), x:pos.x, y:pos.y};
+  });
+  await db.collection('tactic_plans').add({
+    name, mode: currentMode, formation: currentFormation,
+    positions, createdAt: Date.now()
+  });
+  document.getElementById('tacticName').value='';
+  toast('บันทึกแผนแท็กติกแล้ว');
+});
+
+function loadTactic(id){
+  const t = tactics.find(x=>x.id===id); if(!t) return;
+  currentMode = t.mode;
+  document.querySelectorAll('#segMode button').forEach(x=>x.classList.toggle('active', x.dataset.mode===t.mode));
+  buildFormationOptions();
+  currentFormation = t.formation;
+  document.getElementById('formationSelect').value = t.formation;
+  assignment = {}; freePos = {};
+  (t.positions||[]).forEach(pos=>{
+    assignment[pos.slotIndex] = pos.playerId;
+    freePos[pos.playerId] = {x:pos.x, y:pos.y};
+  });
+  setView('tactics');
+  renderPitch(); renderBench();
+  toast('โหลดแผน "'+t.name+'" แล้ว');
+}
+window.loadTactic = loadTactic;
+window.confirmDeleteTactic = (id)=>{
+  showModal(`
+    <h3>ลบแผนนี้?</h3>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn danger" onclick="doDeleteTactic('${id}')">ลบเลย</button>
+    </div>
+  `);
+};
+window.doDeleteTactic = async (id)=>{
+  await db.collection('tactic_plans').doc(id).delete();
+  closeModal(); toast('ลบแผนแล้ว');
+};
+
+function renderHistory(){
+  const el = document.getElementById('historyList');
+  if(!tactics.length){ el.innerHTML = `<div class="empty-note">ยังไม่มีแผนที่บันทึกไว้</div>`; return; }
+  el.innerHTML = tactics.map(t=>{
+    const d = new Date(t.createdAt);
+    const dateStr = d.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'})+' '+d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
+    return `
+    <div class="history-item">
+      <div class="num-badge" style="border-radius:8px;width:30px;height:30px;font-size:10px;">${t.mode}v${t.mode}</div>
+      <div>
+        <div class="hi-name">${esc(t.name)}</div>
+        <div class="hi-meta">${esc(t.formation)} · ${(t.positions||[]).length} คน · ${dateStr}</div>
+      </div>
+      <div class="hi-actions">
+        <button class="btn small primary" onclick="loadTactic('${t.id}')">โหลด</button>
+        <button class="btn small danger" onclick="confirmDeleteTactic('${t.id}')">ลบ</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ============================= INIT ============================= */
+tryAutoConnect();
+</script>
+</body>
+</html>
