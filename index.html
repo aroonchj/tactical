@@ -206,6 +206,10 @@
 
   .pitch-toolbar{display:flex;justify-content:space-between;align-items:center;margin-top:14px;gap:8px;flex-wrap:wrap;}
 
+  .pitch.arrow-mode .chip{pointer-events:none;}
+  .pitch.arrow-mode #arrowLayer{pointer-events:auto;cursor:crosshair;}
+  .pitch.arrow-mode .slot{pointer-events:none;}
+
   /* history */
   .history-list{display:flex;flex-direction:column;gap:10px;}
   .history-item{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
@@ -296,6 +300,20 @@
       <button class="btn small ghost" id="btnClearPitch">ล้างสนาม</button>
     </div>
 
+    <div class="controls-row">
+      <div class="seg" id="segBoardMode">
+        <button data-boardmode="arrange" class="active">🧑‍🤝‍🧑 จัดผู้เล่น</button>
+        <button data-boardmode="arrow">➜ วาดลูกศร</button>
+      </div>
+      <div class="seg" id="segArrowStyle" style="display:none;">
+        <button data-arrowstyle="run" class="active">เส้นทึบ (วิ่ง)</button>
+        <button data-arrowstyle="pass" data-dash="1">เส้นประ (ส่งบอล)</button>
+      </div>
+      <button class="btn small ghost" id="btnUndoArrow" style="display:none;">↩ ย้อนลูกศรล่าสุด</button>
+      <button class="btn small ghost" id="btnClearArrows" style="display:none;">ลบลูกศรทั้งหมด</button>
+    </div>
+    <p class="page-sub" id="arrowHint" style="display:none;margin-top:-6px;">ลากนิ้ว/เมาส์บนสนามเพื่อวาดลูกศร (ลากจากจุดเริ่มไปจุดปลาย)</p>
+
     <div class="tactics-layout">
       <div class="side-panel">
         <label class="field-label">ผู้เล่นสำรอง (ลากลงสนาม)</label>
@@ -310,6 +328,16 @@
           <div class="box bottom"></div>
           <div class="box top small"></div>
           <div class="box bottom small"></div>
+          <svg id="arrowLayer" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:15;">
+            <defs>
+              <marker id="arrowHeadRun" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L6,3 L0,6 Z" fill="#fff"></path>
+              </marker>
+              <marker id="arrowHeadPass" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L6,3 L0,6 Z" fill="#f0d675"></path>
+              </marker>
+            </defs>
+          </svg>
         </div>
         <div class="pitch-toolbar">
           <div style="font-size:12px;color:var(--text-mute);" id="pitchInfo"></div>
@@ -348,6 +376,9 @@ let freePos = {};         // playerId -> {x,y} percent override
 let editingPlayerId = null;
 let editingStaffId = null;
 let dragCtx = null;       // active drag context
+let boardMode = 'arrange'; // 'arrange' | 'arrow'
+let arrows = [];          // [{x1,y1,x2,y2,style:'run'|'pass'}]
+let arrowStyle = 'run';
 
 const FORMATIONS = {
   '7': {
@@ -688,7 +719,7 @@ document.getElementById('segMode').addEventListener('click', e=>{
   const b = e.target.closest('button'); if(!b) return;
   currentMode = b.dataset.mode;
   document.querySelectorAll('#segMode button').forEach(x=>x.classList.toggle('active', x===b));
-  assignment = {}; freePos = {};
+  assignment = {}; freePos = {}; arrows = [];
   buildFormationOptions();
   renderPitch(); renderBench();
 });
@@ -701,14 +732,98 @@ function buildFormationOptions(){
 }
 document.getElementById('formationSelect').addEventListener('change', e=>{
   currentFormation = e.target.value;
-  assignment = {}; freePos = {};
+  assignment = {}; freePos = {}; arrows = [];
   renderPitch(); renderBench();
 });
 document.getElementById('btnClearPitch').addEventListener('click', ()=>{
-  assignment = {}; freePos = {};
+  assignment = {}; freePos = {}; arrows = [];
   renderPitch(); renderBench();
   toast('ล้างสนามแล้ว');
 });
+
+/* ============================= BOARD MODE (arrange vs draw arrows) ============================= */
+document.getElementById('segBoardMode').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b) return;
+  boardMode = b.dataset.boardmode;
+  document.querySelectorAll('#segBoardMode button').forEach(x=>x.classList.toggle('active', x===b));
+  const isArrow = boardMode==='arrow';
+  document.getElementById('pitch').classList.toggle('arrow-mode', isArrow);
+  document.getElementById('segArrowStyle').style.display = isArrow?'flex':'none';
+  document.getElementById('btnUndoArrow').style.display = isArrow?'inline-flex':'none';
+  document.getElementById('btnClearArrows').style.display = isArrow?'inline-flex':'none';
+  document.getElementById('arrowHint').style.display = isArrow?'block':'none';
+});
+document.getElementById('segArrowStyle').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b) return;
+  arrowStyle = b.dataset.arrowstyle;
+  document.querySelectorAll('#segArrowStyle button').forEach(x=>x.classList.toggle('active', x===b));
+});
+document.getElementById('btnUndoArrow').addEventListener('click', ()=>{
+  arrows.pop(); renderArrows();
+});
+document.getElementById('btnClearArrows').addEventListener('click', ()=>{
+  arrows = []; renderArrows();
+});
+
+/* ============================= ARROW DRAWING ============================= */
+(function setupArrowDrawing(){
+  const svg = document.getElementById('arrowLayer');
+  let draft = null; // {x1,y1}
+  let draftLine = null;
+
+  function pitchPercentFromEvent(ev){
+    const rect = document.getElementById('pitch').getBoundingClientRect();
+    let x = (ev.clientX-rect.left)/rect.width*100;
+    let y = (ev.clientY-rect.top)/rect.height*100;
+    x = Math.max(0,Math.min(100,x)); y = Math.max(0,Math.min(100,y));
+    return {x,y};
+  }
+  svg.addEventListener('pointerdown', e=>{
+    if(boardMode!=='arrow') return;
+    const p = pitchPercentFromEvent(e);
+    draft = {x1:p.x, y1:p.y};
+    draftLine = document.createElementNS('http://www.w3.org/2000/svg','line');
+    draftLine.setAttribute('stroke', arrowStyle==='pass' ? 'var(--gold-soft)' : '#fff');
+    draftLine.setAttribute('stroke-width','2.4');
+    draftLine.setAttribute('stroke-dasharray', arrowStyle==='pass' ? '5,5':'none');
+    draftLine.setAttribute('x1', draft.x1+'%'); draftLine.setAttribute('y1', draft.y1+'%');
+    draftLine.setAttribute('x2', draft.x1+'%'); draftLine.setAttribute('y2', draft.y1+'%');
+    svg.appendChild(draftLine);
+    svg.setPointerCapture && svg.setPointerCapture(e.pointerId);
+  });
+  svg.addEventListener('pointermove', e=>{
+    if(!draft) return;
+    const p = pitchPercentFromEvent(e);
+    draftLine.setAttribute('x2', p.x+'%'); draftLine.setAttribute('y2', p.y+'%');
+  });
+  svg.addEventListener('pointerup', e=>{
+    if(!draft) return;
+    const p = pitchPercentFromEvent(e);
+    if(draftLine) draftLine.remove();
+    const dist = Math.hypot(p.x-draft.x1, p.y-draft.y1);
+    if(dist > 3){ // ignore accidental taps
+      arrows.push({x1:draft.x1, y1:draft.y1, x2:p.x, y2:p.y, style:arrowStyle});
+    }
+    draft = null; draftLine = null;
+    renderArrows();
+  });
+})();
+
+function renderArrows(){
+  const svg = document.getElementById('arrowLayer');
+  svg.querySelectorAll('line.tac-arrow').forEach(n=>n.remove());
+  arrows.forEach(a=>{
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('class','tac-arrow');
+    line.setAttribute('x1', a.x1+'%'); line.setAttribute('y1', a.y1+'%');
+    line.setAttribute('x2', a.x2+'%'); line.setAttribute('y2', a.y2+'%');
+    line.setAttribute('stroke', a.style==='pass' ? '#f0d675' : '#fff');
+    line.setAttribute('stroke-width','2.4');
+    if(a.style==='pass') line.setAttribute('stroke-dasharray','5,5');
+    line.setAttribute('marker-end', a.style==='pass' ? 'url(#arrowHeadPass)':'url(#arrowHeadRun)');
+    svg.appendChild(line);
+  });
+}
 
 /* ============================= BENCH RENDER ============================= */
 document.getElementById('benchSearch').addEventListener('input', renderBench);
@@ -849,6 +964,7 @@ function renderPitch(){
   const count = Object.keys(assignment).length;
   const total = currentMode==='7'?7:11;
   document.getElementById('pitchInfo').textContent = `จัดตัวแล้ว ${count}/${total} คน · ดับเบิลคลิกผู้เล่นบนสนามเพื่อถอดออก`;
+  renderArrows();
 }
 
 /* ============================= SAVE / LOAD TACTIC ============================= */
@@ -863,7 +979,7 @@ document.getElementById('btnSaveTactic').addEventListener('click', async ()=>{
   });
   await db.collection('tactic_plans').add({
     name, mode: currentMode, formation: currentFormation,
-    positions, createdAt: Date.now()
+    positions, arrows: arrows, createdAt: Date.now()
   });
   document.getElementById('tacticName').value='';
   toast('บันทึกแผนแท็กติกแล้ว');
@@ -881,6 +997,7 @@ function loadTactic(id){
     assignment[pos.slotIndex] = pos.playerId;
     freePos[pos.playerId] = {x:pos.x, y:pos.y};
   });
+  arrows = (t.arrows||[]).slice();
   setView('tactics');
   renderPitch(); renderBench();
   toast('โหลดแผน "'+t.name+'" แล้ว');
@@ -926,4 +1043,3 @@ tryAutoConnect();
 </script>
 </body>
 </html>
-
